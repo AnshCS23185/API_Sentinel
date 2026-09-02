@@ -1,0 +1,109 @@
+services:
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: api-sentinel-postgres
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    container_name: api-sentinel-redis
+
+    ports:
+      - "${REDIS_PORT}:6379"
+
+    volumes:
+      - redis_data:/data
+
+    command: redis-server --appendonly yes
+
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+    restart: unless-stopped
+
+  demo-api:
+    build:
+      context: ./demo-api
+      dockerfile: Dockerfile
+
+    container_name: api-sentinel-demo-api
+
+    ports:
+      - "${DEMO_API_PORT}:8002"
+
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: api-sentinel-backend
+
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-notifications@apisentinel.local}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-your_smtp_app_password_here}
+      SMTP_TLS: ${SMTP_TLS:-True}
+      EMAILS_FROM_EMAIL: ${EMAILS_FROM_EMAIL:-noreply@apisentinel.local}
+      EMAILS_FROM_NAME: ${EMAILS_FROM_NAME:-API Sentinel System}
+
+    ports:
+      - "${BACKEND_PORT}:8000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    container_name: api-sentinel-frontend
+
+    environment:
+      VITE_API_URL: http://localhost:8000
+
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+
+    depends_on:
+      - backend
+
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
