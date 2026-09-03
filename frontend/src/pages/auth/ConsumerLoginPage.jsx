@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Mail, Lock, User, Key, Check, ShieldCheck, RefreshCw, Eye, EyeOff } from 'lucide-react'
+import { Mail, Lock, User, Key, Check, ShieldCheck, RefreshCw, Eye, EyeOff, Zap } from 'lucide-react'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -53,6 +53,22 @@ export const ConsumerLoginPage = () => {
     setEmail('consumer@acmecorp.com')
     setPassword('TempPass9824!')
     setError(null)
+  }
+
+  // 1-Click Instant Demo Login
+  const handleInstantDemoLogin = async () => {
+    setEmail('consumer@acmecorp.com')
+    setPassword('TempPass9824!')
+    setError(null)
+    setLoading(true)
+    try {
+      await consumerLogin('consumer@acmecorp.com', 'TempPass9824!')
+      navigate('/consumer')
+    } catch (err) {
+      setError(err.message || 'Invalid email or password.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Handle Reset Password Submit
@@ -169,9 +185,21 @@ export const ConsumerLoginPage = () => {
           </button>
         </div>
 
-        <Button type="submit" variant="secondary" className="w-full" disabled={loading}>
-          {loading ? 'Authenticating...' : 'Sign In to Consumer Portal'}
-        </Button>
+        <div className="space-y-2 pt-1">
+          <Button type="submit" variant="secondary" className="w-full" disabled={loading}>
+            {loading ? 'Authenticating...' : 'Sign In to Consumer Portal'}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleInstantDemoLogin}
+            disabled={loading}
+            className="w-full border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-bold flex items-center justify-center gap-1.5 cursor-pointer text-xs"
+          >
+            <Zap className="h-3.5 w-3.5 text-amber-500" /> ⚡ Quick Demo Sign In
+          </Button>
+        </div>
       </form>
 
       <div className="mt-6 border-t border-slate-200 dark:border-slate-800 pt-4 text-center">

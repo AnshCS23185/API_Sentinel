@@ -14,7 +14,11 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Check
+  Check,
+  Trash2,
+  Mail,
+  AlertTriangle,
+  Key,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Table, TableRow, TableCell } from '@/components/ui/Table'
@@ -54,10 +58,20 @@ export const ConsumersPage = () => {
   const [modalError, setModalError] = useState(null)
   const [successMessage, setSuccessMessage] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
+  const [copiedPass, setCopiedPass] = useState(false)
+
+  // Created Credentials Display Banner / Modal State
+  const [createdCredentials, setCreatedCredentials] = useState(null)
+
+  // Delete Consumer Modal State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [consumerToDelete, setConsumerToDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Form State
   const [formData, setFormData] = useState({
     name: '',
+    email: '',
     description: '',
     plan_id: '',
     status: 'active',
@@ -75,9 +89,6 @@ export const ConsumersPage = () => {
     { id: 5, consumer_id_code: '#C-0005', name: 'Key Delete Consumer', category: 'Business', email: 'contact@keydeleteconsumer.com', plan: 'Business', plan_variant: 'business', status: 'active', created_at: '28/08/2026', last_active: '2 mins ago', active_dot: 'emerald' },
     { id: 6, consumer_id_code: '#C-0006', name: 'Acme Corp', category: 'Developer', email: 'contact@acmecorp.com', plan: 'Developer', plan_variant: 'developer', status: 'active', created_at: '28/08/2026', last_active: '2 mins ago', active_dot: 'emerald' },
     { id: 7, consumer_id_code: '#C-0007', name: 'Beta Corp', category: 'Enterprise', email: 'contact@betacorp.com', plan: 'Enterprise', plan_variant: 'enterprise', status: 'active', created_at: '28/08/2026', last_active: '2 mins ago', active_dot: 'emerald' },
-    { id: 8, consumer_id_code: '#C-0008', name: 'Consumer 0', category: 'Developer', email: 'contact@consumer0.com', plan: 'Developer', plan_variant: 'developer', status: 'active', created_at: '28/08/2026', last_active: '2 mins ago', active_dot: 'emerald' },
-    { id: 9, consumer_id_code: '#C-0009', name: 'Consumer 1', category: 'Business', email: 'contact@consumer1.com', plan: 'Business', plan_variant: 'business', status: 'inactive', created_at: '28/08/2026', last_active: '2 mins ago', active_dot: 'amber' },
-    { id: 10, consumer_id_code: '#C-0010', name: 'Consumer 2', category: 'Enterprise', email: 'contact@consumer2.com', plan: 'Enterprise', plan_variant: 'enterprise', status: 'active', created_at: '28/08/2026', last_active: '2 mins ago', active_dot: 'emerald' },
   ]
 
   // Fetch Data
@@ -101,15 +112,15 @@ export const ConsumersPage = () => {
       }
 
       if (loadedConsumers.length > 0) {
-        const formatted = loadedConsumers.map((c, index) => {
-          const planName = c.plan_name || c.plan?.name || (index % 3 === 0 ? 'Enterprise' : index % 2 === 0 ? 'Business' : 'Developer')
+        const formatted = loadedConsumers.map((c) => {
+          const planName = c.plan_name || c.plan?.name || 'Free Tier'
           const planVariant = planName.toLowerCase().includes('enterprise') ? 'enterprise' : planName.toLowerCase().includes('business') ? 'business' : planName.toLowerCase().includes('pro') ? 'developer' : 'basic'
           
           return {
             id: c.id,
             consumer_id_code: `#C-${String(c.id).padStart(4, '0')}`,
             name: c.name,
-            category: planName,
+            category: c.description || planName,
             email: c.email || `contact@${c.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
             plan: planName,
             plan_variant: planVariant,
@@ -161,7 +172,7 @@ export const ConsumersPage = () => {
     return filteredConsumers.slice(startIdx, startIdx + pageSize)
   }, [filteredConsumers, currentPage, pageSize])
 
-  // Handle Form Submission
+  // Handle Provisioning New Consumer
   const handleCreateConsumer = async (e) => {
     e.preventDefault()
     if (!formData.name.trim()) {
@@ -174,22 +185,48 @@ export const ConsumersPage = () => {
     try {
       const payload = {
         name: formData.name.trim(),
+        email: formData.email ? formData.email.trim() : undefined,
         description: formData.description.trim() || undefined,
         plan_id: formData.plan_id ? parseInt(formData.plan_id, 10) : undefined,
         status: formData.status,
       }
       await consumerService.createConsumer(payload)
       
+      const consumerEmail = formData.email || `contact@${formData.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`
+      const initialPass = 'TempPass9824!'
+
+      setCreatedCredentials({
+        name: formData.name.trim(),
+        email: consumerEmail,
+        password: initialPass,
+      })
+
       setSuccessMessage(`Consumer "${formData.name}" provisioned successfully!`)
       setModalOpen(false)
-      setFormData({ name: '', description: '', plan_id: '', status: 'active' })
+      setFormData({ name: '', email: '', description: '', plan_id: '', status: 'active' })
       fetchData()
-
-      setTimeout(() => setSuccessMessage(null), 4000)
     } catch (err) {
       setModalError(err.response?.data?.detail || err.message || 'Failed to provision consumer')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // Handle Delete Consumer
+  const handleConfirmDelete = async () => {
+    if (!consumerToDelete) return
+    setDeleting(true)
+    try {
+      await consumerService.deleteConsumer(consumerToDelete.id, true)
+      setSuccessMessage(`Consumer "${consumerToDelete.name}" deleted successfully!`)
+      setDeleteModalOpen(false)
+      setConsumerToDelete(null)
+      fetchData()
+      setTimeout(() => setSuccessMessage(null), 4000)
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to delete consumer')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -199,7 +236,7 @@ export const ConsumersPage = () => {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
-  // Summary Metrics Breakdown dynamically computed from database records
+  // Summary Metrics Breakdown
   const metrics = useMemo(() => {
     const total = consumers.length
     const active = consumers.filter(c => c.status?.toLowerCase() === 'active').length
@@ -275,14 +312,60 @@ export const ConsumersPage = () => {
     <div className="flex flex-col h-full justify-between gap-2.5 overflow-hidden">
       {/* Success Banner */}
       {successMessage && (
-        <div className="flex items-center justify-between rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 p-2 text-xs font-semibold text-emerald-900 dark:text-emerald-200 shadow-sm animate-in fade-in shrink-0">
+        <div className="flex items-center justify-between rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 p-2.5 text-xs font-semibold text-emerald-900 dark:text-emerald-200 shadow-sm shrink-0">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>{successMessage}</span>
           </div>
-          <button onClick={() => setSuccessMessage(null)} className="text-emerald-700 dark:text-emerald-400 hover:opacity-80">
+          <button onClick={() => setSuccessMessage(null)} className="text-emerald-700 dark:text-emerald-400 hover:opacity-80 cursor-pointer">
             ✕
           </button>
+        </div>
+      )}
+
+      {/* PROVISIONED CREDENTIALS DISPLAY BANNER */}
+      {createdCredentials && (
+        <div className="rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/50 p-3 text-xs text-amber-900 dark:text-amber-200 shadow-sm space-y-2 shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-300">
+              <Mail className="h-4 w-4 text-amber-500" />
+              <span>Consumer Initial Login Password</span>
+            </div>
+            <button
+              onClick={() => setCreatedCredentials(null)}
+              className="text-amber-700 dark:text-amber-400 hover:text-amber-900 font-bold text-xs cursor-pointer"
+            >
+              Dismiss ✕
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 font-mono text-[11px]">
+            <div className="p-2 rounded bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/60">
+              <span className="text-[10px] text-slate-400 block font-sans">CONSUMER NAME</span>
+              <span className="font-bold text-slate-900 dark:text-slate-100">{createdCredentials.name}</span>
+            </div>
+            <div className="p-2 rounded bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/60">
+              <span className="text-[10px] text-slate-400 block font-sans">PORTAL LOGIN EMAIL</span>
+              <span className="font-bold text-slate-900 dark:text-slate-100">{createdCredentials.email}</span>
+            </div>
+            <div className="p-2 rounded bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/60 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-amber-500 block font-sans font-bold">INITIAL PASSWORD</span>
+                <span className="font-bold text-amber-500">{createdCredentials.password}</span>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(createdCredentials.password)
+                  setCopiedPass(true)
+                  setTimeout(() => setCopiedPass(false), 2000)
+                }}
+                className="p-1 rounded bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                title="Copy Password"
+              >
+                {copiedPass ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -298,7 +381,7 @@ export const ConsumersPage = () => {
                 setModalError(null)
                 setModalOpen(true)
               }}
-              className="shadow-sm py-1.5 px-3 text-xs"
+              className="shadow-sm py-1.5 px-3 text-xs cursor-pointer"
             >
               <Plus className="mr-1 h-3.5 w-3.5" />
               Provision New Consumer
@@ -307,7 +390,7 @@ export const ConsumersPage = () => {
         />
       </div>
 
-      {/* COMPACT SUMMARY CARDS ROW (h-[72px]) */}
+      {/* COMPACT SUMMARY CARDS ROW */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 shrink-0">
         {metrics.map((card, idx) => (
           <div
@@ -335,9 +418,8 @@ export const ConsumersPage = () => {
         ))}
       </div>
 
-      {/* COMPACT SEARCH + FILTER TOOLBAR (Seamless Element resting directly on page background) */}
+      {/* COMPACT SEARCH + FILTER TOOLBAR */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between rounded-xl border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-[#111827] p-2 shadow-xs shrink-0">
-        {/* Search Input */}
         <div className="relative flex-1">
           <SearchInput
             value={search}
@@ -349,7 +431,6 @@ export const ConsumersPage = () => {
           />
         </div>
 
-        {/* Filters Right Group */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="w-32">
             <Select
@@ -393,7 +474,7 @@ export const ConsumersPage = () => {
               setPlanFilter('all')
               setCurrentPage(1)
             }}
-            className="flex items-center gap-1 text-xs text-slate-700 dark:text-slate-300 px-2.5 py-1"
+            className="flex items-center gap-1 text-xs text-slate-700 dark:text-slate-300 px-2.5 py-1 cursor-pointer"
             title="Reset Filters"
           >
             <Filter className="h-3 w-3 text-slate-400" />
@@ -434,7 +515,7 @@ export const ConsumersPage = () => {
                         e.stopPropagation()
                         handleCopyCode(c.consumer_id_code, c.id)
                       }}
-                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-0.5"
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-0.5 cursor-pointer"
                       title="Copy Consumer ID"
                     >
                       {copiedId === c.id ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
@@ -498,15 +579,28 @@ export const ConsumersPage = () => {
                       size="sm"
                       variant="outline"
                       onClick={() => navigate(`/admin/consumers/${c.id}`)}
-                      className="text-xs font-semibold px-2 py-0.5"
+                      className="text-xs font-semibold px-2 py-0.5 cursor-pointer"
                     >
                       View
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => {
+                        setConsumerToDelete(c)
+                        setDeleteModalOpen(true)
+                      }}
+                      className="text-xs font-semibold px-2 py-0.5 flex items-center gap-1 cursor-pointer"
+                      title="Delete Consumer"
+                    >
+                      <Trash2 className="h-3 w-3" /> Delete
                     </Button>
 
                     <div className="relative">
                       <button
                         onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
-                        className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                        className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
                       >
                         <MoreVertical className="h-4 w-4" />
                       </button>
@@ -518,7 +612,7 @@ export const ConsumersPage = () => {
                               setOpenMenuId(null)
                               navigate(`/admin/consumers/${c.id}`)
                             }}
-                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                           >
                             Consumer Details
                           </button>
@@ -527,9 +621,19 @@ export const ConsumersPage = () => {
                               setOpenMenuId(null)
                               navigate(`/admin/analytics`)
                             }}
-                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                           >
                             View Usage Stats
+                          </button>
+                          <button
+                            onClick={() => {
+                              setOpenMenuId(null)
+                              setConsumerToDelete(c)
+                              setDeleteModalOpen(true)
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/10 cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete Consumer
                           </button>
                         </div>
                       )}
@@ -673,7 +777,7 @@ export const ConsumersPage = () => {
               An initial temporary password (<span className="font-mono font-bold text-slate-900 dark:text-slate-100">TempPass9824!</span>) will be automatically generated and dispatched to <span className="font-bold">{formData.email || 'the consumer email'}</span>.
             </p>
             <p className="text-[10px] text-slate-500 dark:text-slate-400">
-              The consumer will be prompted to sign in and reset their password upon first portal access.
+              Credentials will also be displayed in an alert banner upon successful provisioning.
             </p>
           </div>
 
@@ -718,6 +822,52 @@ export const ConsumersPage = () => {
             />
           </div>
         </form>
+      </Modal>
+
+      {/* DELETE CONSUMER CONFIRMATION MODAL */}
+      <Modal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false)
+          setConsumerToDelete(null)
+        }}
+        title="Delete API Consumer"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDeleteModalOpen(false)
+                setConsumerToDelete(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete Consumer'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-700 dark:text-red-300 flex items-start gap-2.5">
+            <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-red-500" />
+            <div>
+              <p className="font-bold text-sm">Permanent Consumer Deletion</p>
+              <p className="text-xs pt-0.5">
+                Are you sure you want to delete consumer <strong>{consumerToDelete?.name}</strong> (ID: {consumerToDelete?.consumer_id_code})?
+              </p>
+            </div>
+          </div>
+          <p className="text-slate-600 dark:text-slate-400">
+            This will revoke all active API key credentials assigned to this consumer and detach their record from PostgreSQL.
+          </p>
+        </div>
       </Modal>
     </div>
   )

@@ -16,6 +16,7 @@ class ApiConsumer(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
     plan_id: Mapped[Optional[int]] = mapped_column(

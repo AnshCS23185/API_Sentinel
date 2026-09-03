@@ -20,8 +20,12 @@ import { Badge } from '@/components/ui/Badge'
 import { Table, TableRow, TableCell } from '@/components/ui/Table'
 import { analyticsService } from '@/services/analyticsService'
 import { violationService } from '@/services/violationService'
+import { useAuth } from '@/app/providers/AuthProvider'
 
 export const ConsumerUsageAnalyticsPage = () => {
+  const { consumerUser } = useAuth()
+  const currentConsumerId = consumerUser?.id || 733
+
   const [activeTab, setActiveTab] = useState('analytics') // 'analytics' | 'violations'
   const [timeSeries, setTimeSeries] = useState([])
   const [violations, setViolations] = useState([])
@@ -31,8 +35,8 @@ export const ConsumerUsageAnalyticsPage = () => {
     const fetchUsageData = async () => {
       try {
         const [tsData, violData] = await Promise.all([
-          analyticsService.getTimeSeries({ interval: 'hour' }),
-          violationService.getViolations({ limit: 20 }),
+          analyticsService.getTimeSeries({ interval: 'hour', consumer_id: currentConsumerId }),
+          violationService.getViolations({ limit: 20, consumer_id: currentConsumerId }),
         ])
 
         if (tsData && Array.isArray(tsData.data)) {

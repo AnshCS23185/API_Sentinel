@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Shield,
@@ -19,78 +19,159 @@ import {
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { analyticsService } from '@/services/analyticsService'
+import { violationService } from '@/services/violationService'
+import { consumerService } from '@/services/consumerService'
+import { useAuth } from '@/app/providers/AuthProvider'
 
 export const ConsumerDashboardPage = () => {
   const navigate = useNavigate()
-  const [timeSeries, setTimeSeries] = useState([])
+  const { consumerUser } = useAuth()
+  const currentConsumerId = consumerUser?.id || 733
+
+  // Dynamic Dashboard States driven by Backend APIs
+  const [timeSeriesData, setTimeSeriesData] = useState([])
   const [recentLogs, setRecentLogs] = useState([])
+  const [summaryMetrics, setSummaryMetrics] = useState(null)
+  const [latencyMetrics, setLatencyMetrics] = useState(null)
+  const [violationsCount, setViolationsCount] = useState(0)
+  const [assignedPlan, setAssignedPlan] = useState({
+    name: consumerUser?.plan_name || 'Free Tier',
+    limit: '10 req / 60s',
+    burstCap: '12 req',
+    status: 'ACTIVE',
+    windowSec: 60,
+    maxReq: 10,
+  })
+  const [activeKeysCount, setActiveKeysCount] = useState(1)
+
   const [refreshing, setRefreshing] = useState(false)
   const [timeRange, setTimeRange] = useState('24h')
+  const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }))
 
+  // Fetch all backend API data for Consumer Dashboard
   const loadDashboardData = async () => {
     setRefreshing(true)
     try {
-      const [tsData, logsData] = await Promise.all([
-        analyticsService.getTimeSeries({ interval: 'hour' }),
-        analyticsService.getLogs({ limit: 3 }),
+      const now = new Date()
+      let startDate = new Date()
+      let intervalParam = 'hour'
+
+      if (timeRange === '7d') {
+        startDate.setDate(now.getDate() - 7)
+        intervalParam = 'day'
+      } else if (timeRange === '30d') {
+        startDate.setDate(now.getDate() - 30)
+        intervalParam = 'day'
+      } else {
+        startDate.setHours(now.getHours() - 24)
+        intervalParam = 'hour'
+      }
+
+      const params = {
+        start: startDate.toISOString(),
+        end: now.toISOString(),
+        interval: intervalParam,
+        consumer_id: currentConsumerId,
+      }
+
+      const [tsRes, logsRes, sumRes, latRes, violRes, consRes] = await Promise.allSettled([
+        analyticsService.getTimeSeries(params),
+        analyticsService.getLogs({ limit: 5, consumer_id: currentConsumerId }),
+        analyticsService.getSummary(params),
+        analyticsService.getLatency(params),
+        violationService.getViolations({ limit: 10, consumer_id: currentConsumerId }),
+        consumerService.getConsumer(currentConsumerId),
       ])
 
-      if (tsData && Array.isArray(tsData.data)) {
-        setTimeSeries(tsData.data)
+      // 1. TimeSeries Traffic Points
+      if (tsRes.status === 'fulfilled' && Array.isArray(tsRes.value?.points)) {
+        const formattedPoints = tsRes.value.points.map((p) => {
+          const d = new Date(p.timestamp)
+          const label = timeRange === '24h'
+            ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : d.toLocaleDateString([], { day: '2-digit', month: 'short' })
+          return {
+            timestamp: label,
+            requests: p.request_count || 0,
+            errors: p.error_count || 0,
+          }
+        })
+        setTimeSeriesData(formattedPoints)
       } else {
-        setTimeSeries([
-          { timestamp: '00:00', requests: 150 },
-          { timestamp: '02:00', requests: 140 },
-          { timestamp: '04:00', requests: 90 },
-          { timestamp: '06:00', requests: 180 },
-          { timestamp: '08:00', requests: 310 },
-          { timestamp: '10:00', requests: 420 },
-          { timestamp: '12:00', requests: 560 },
-          { timestamp: '14:00', requests: 540 },
-          { timestamp: '16:00', requests: 440 },
-          { timestamp: '18:00', requests: 390 },
-          { timestamp: '20:00', requests: 340 },
-          { timestamp: '22:00', requests: 310 },
-          { timestamp: '24:00', requests: 280 },
+        // Default 0 flat line dataset for 24h
+        const zeroPoints = Array.from({ length: 12 }, (_, i) => {
+          const hr = String(i * 2).padStart(2, '0')
+          return { timestamp: `${hr}:00`, requests: 0, errors: 0 }
+        })
+        setTimeSeriesData(zeroPoints)
+      }
+
+      // 2. Recent API Logs
+      if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value) && logsRes.value.length > 0) {
+        const formattedLogs = logsRes.value.slice(0, 3).map((l, index) => ({
+          id: l.id || index + 1,
+          time: l.timestamp ? new Date(l.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '30 Aug 2026, 17:21:34',
+          api: l.api_name || (l.path?.includes('user') ? 'User Service API' : l.path?.includes('order') ? 'Order Service API' : 'Product Service API'),
+          path: l.path || '/api/v1/resource',
+          method: l.method || 'GET',
+          status: l.status_code || 200,
+          latency: `${l.response_time_ms || Math.floor(Math.random() * 50 + 90)} ms`,
+          result: (l.status_code || 200) < 400 ? 'Success' : 'Blocked',
+        }))
+        setRecentLogs(formattedLogs)
+      } else {
+        setRecentLogs([
+          { id: 1, time: '30 Aug 2026, 17:21:34', api: 'User Service API', path: '/api/v1/users', method: 'GET', status: 200, latency: '112 ms', result: 'Success' },
+          { id: 2, time: '30 Aug 2026, 17:21:10', api: 'Order Service API', path: '/api/v1/orders', method: 'POST', status: 201, latency: '145 ms', result: 'Success' },
+          { id: 3, time: '30 Aug 2026, 17:20:45', api: 'Product Service API', path: '/api/v1/products', method: 'GET', status: 200, latency: '98 ms', result: 'Success' },
         ])
       }
 
-      if (logsData && Array.isArray(logsData) && logsData.length > 0) {
-        setRecentLogs(logsData.slice(0, 3))
-      } else {
-        setRecentLogs([
-          {
-            id: 1,
-            time: '30 Aug 2026, 17:21:34',
-            api: 'User Service API',
-            path: '/api/v1/users',
-            method: 'GET',
-            status: 200,
-            latency: '112 ms',
-            result: 'Success',
-          },
-          {
-            id: 2,
-            time: '30 Aug 2026, 17:21:10',
-            api: 'Order Service API',
-            path: '/api/v1/orders',
-            method: 'POST',
-            status: 201,
-            latency: '145 ms',
-            result: 'Success',
-          },
-          {
-            id: 3,
-            time: '30 Aug 2026, 17:20:45',
-            api: 'Product Service API',
-            path: '/api/v1/products',
-            method: 'GET',
-            status: 200,
-            latency: '98 ms',
-            result: 'Success',
-          },
-        ])
+      // 3. Summary Metrics
+      if (sumRes.status === 'fulfilled' && sumRes.value) {
+        setSummaryMetrics(sumRes.value)
       }
+
+      // 4. Latency Metrics
+      if (latRes.status === 'fulfilled' && latRes.value) {
+        setLatencyMetrics(latRes.value)
+      }
+
+      // 5. Violations Count
+      if (violRes.status === 'fulfilled' && violRes.value) {
+        const count = violRes.value.total ?? (Array.isArray(violRes.value.violations) ? violRes.value.violations.length : 0)
+        setViolationsCount(count)
+      }
+
+      // 6. Consumer Details & Plan
+      if (consRes.status === 'fulfilled' && consRes.value) {
+        const c = consRes.value.id ? consRes.value : (Array.isArray(consRes.value) ? consRes.value[0] : (consRes.value.items?.[0] || {}))
+        setAssignedPlan({
+          name: c.plan_name || c.plan?.name || consumerUser?.plan_name || 'Free Tier',
+          limit: `${c.limit || 10} req / ${c.window_seconds || 60}s`,
+          burstCap: `${Math.round((c.limit || 10) * 1.2)} req`,
+          status: c.status ? c.status.toUpperCase() : 'ACTIVE',
+          windowSec: c.window_seconds || 60,
+          maxReq: c.limit || 10,
+        })
+        setActiveKeysCount(c.active_api_keys_count || 1)
+      }
+
+      setLastUpdated(new Date().toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      }))
     } catch (err) {
       console.error('Failed to load consumer dashboard analytics', err)
     } finally {
@@ -100,7 +181,28 @@ export const ConsumerDashboardPage = () => {
 
   useEffect(() => {
     loadDashboardData()
-  }, [])
+
+    const handleTrafficUpdate = () => {
+      loadDashboardData()
+    }
+    window.addEventListener('sentinel-traffic-updated', handleTrafficUpdate)
+    return () => {
+      window.removeEventListener('sentinel-traffic-updated', handleTrafficUpdate)
+    }
+  }, [timeRange])
+
+  // Calculated Metrics from backend summary
+  const totalReq = summaryMetrics?.total_requests ?? 0
+  const successReq = summaryMetrics?.successful_requests ?? 0
+  const failedReq = summaryMetrics?.failed_requests ?? 0
+  const successPct = totalReq > 0 ? ((successReq / totalReq) * 100).toFixed(1) : '100.0'
+  const failedPct = totalReq > 0 ? ((failedReq / totalReq) * 100).toFixed(1) : '0.0'
+  const avgLatencyMs = latencyMetrics?.avg_ms ? Math.round(latencyMetrics.avg_ms) : 120
+
+  const quotaMax = assignedPlan.maxReq || 1000
+  const quotaUsed = Math.min(totalReq, quotaMax)
+  const quotaPct = Math.round((quotaUsed / quotaMax) * 100)
+  const quotaRemaining = Math.max(quotaMax - quotaUsed, 0)
 
   return (
     <div className="h-full flex flex-col justify-between space-y-2 text-main-color select-none">
@@ -117,7 +219,7 @@ export const ConsumerDashboardPage = () => {
 
         <div className="flex items-center gap-2.5 text-[11px]">
           <span className="font-mono text-slate-400">
-            Last updated: 30 Aug 2026, 05:22 PM
+            Last updated: {lastUpdated}
           </span>
           <button
             onClick={loadDashboardData}
@@ -143,12 +245,12 @@ export const ConsumerDashboardPage = () => {
                 ASSIGNED PLAN
               </span>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Pro Plan</span>
+                <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{assignedPlan.name}</span>
                 <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-bold border border-emerald-500/20">
-                  ACTIVE
+                  {assignedPlan.status}
                 </span>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">1,000 req / 60s window</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{assignedPlan.limit} window</p>
             </div>
           </div>
 
@@ -161,10 +263,10 @@ export const ConsumerDashboardPage = () => {
               <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block leading-tight">
                 ACTIVE API KEYS
               </span>
-              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block leading-tight">2 Keys</span>
+              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block leading-tight">{activeKeysCount} Keys</span>
               <button
                 onClick={() => navigate('/consumer/my-apis')}
-                className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#D44720] hover:underline"
+                className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#D44720] hover:underline cursor-pointer"
               >
                 100% Operational • Manage Keys →
               </button>
@@ -181,15 +283,15 @@ export const ConsumerDashboardPage = () => {
                 <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block leading-tight">
                   QUOTA USAGE
                 </span>
-                <span className="text-[9px] text-slate-400 font-medium">860 remaining</span>
+                <span className="text-[9px] text-slate-400 font-medium">{quotaRemaining} remaining</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-slate-900 dark:text-slate-100">14%</span>
+                <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{quotaPct}%</span>
                 <div className="h-1 flex-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                  <div className="h-full bg-emerald-500 dark:bg-emerald-400 rounded-full" style={{ width: '14%' }} />
+                  <div className="h-full bg-emerald-500 dark:bg-emerald-400 rounded-full" style={{ width: `${quotaPct}%` }} />
                 </div>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">140 of 1,000 req used</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{quotaUsed} of {quotaMax} req used</p>
             </div>
           </div>
 
@@ -202,19 +304,19 @@ export const ConsumerDashboardPage = () => {
               <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block leading-tight">
                 RATE LIMIT VIOLATIONS
               </span>
-              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block leading-tight">0</span>
+              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block leading-tight">{violationsCount}</span>
               <button
                 onClick={() => navigate('/consumer/usage')}
-                className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#D44720] hover:underline"
+                className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#D44720] hover:underline cursor-pointer"
               >
-                0 blocked • View Logs →
+                {violationsCount} blocked • View Logs →
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 3. MAIN DASHBOARD GRID (Fits 100% inside single window) */}
+      {/* 3. MAIN DASHBOARD GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5 flex-1 min-h-0">
         {/* LEFT COLUMN: Chart + Recent Activity */}
         <div className="lg:col-span-2 flex flex-col justify-between space-y-2.5">
@@ -222,12 +324,12 @@ export const ConsumerDashboardPage = () => {
           <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-3 shadow-xs flex-1 flex flex-col justify-between min-h-0">
             <div className="flex items-center justify-between mb-1.5">
               <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                Request Traffic (Last 24 Hours)
+                Request Traffic ({timeRange === '7d' ? 'Last 7 Days' : timeRange === '30d' ? 'Last 30 Days' : 'Last 24 Hours'})
               </h3>
               <select
                 value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}
-                className="rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-2 py-0.5 text-[10px] text-slate-700 dark:text-slate-300 font-medium focus:outline-none"
+                className="rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-2 py-0.5 text-[10px] text-slate-700 dark:text-slate-300 font-medium focus:outline-none cursor-pointer"
               >
                 <option value="24h">Last 24 Hours</option>
                 <option value="7d">Last 7 Days</option>
@@ -235,10 +337,10 @@ export const ConsumerDashboardPage = () => {
               </select>
             </div>
 
-            {/* Compact Recharts AreaChart (Height h-28 = 112px) */}
+            {/* Recharts AreaChart */}
             <div className="h-28 w-full flex-1">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={timeSeries} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                <AreaChart data={timeSeriesData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorTraffic" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#D44720" stopOpacity={0.4} />
@@ -280,7 +382,7 @@ export const ConsumerDashboardPage = () => {
                 <div>
                   <span className="text-[9px] text-slate-400 font-semibold block leading-tight">Total Requests</span>
                   <div className="flex items-baseline gap-1">
-                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">140</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{totalReq}</span>
                     <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center">
                       <TrendingUp className="h-2 w-2 mr-0.5" /> 18.4%
                     </span>
@@ -295,9 +397,9 @@ export const ConsumerDashboardPage = () => {
                 <div>
                   <span className="text-[9px] text-slate-400 font-semibold block leading-tight">Successful</span>
                   <div className="flex items-baseline gap-1">
-                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">132</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{successReq}</span>
                     <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                      94.3%
+                      {successPct}%
                     </span>
                   </div>
                 </div>
@@ -310,9 +412,9 @@ export const ConsumerDashboardPage = () => {
                 <div>
                   <span className="text-[9px] text-slate-400 font-semibold block leading-tight">Failed</span>
                   <div className="flex items-baseline gap-1">
-                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">8</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{failedReq}</span>
                     <span className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold">
-                      5.7%
+                      {failedPct}%
                     </span>
                   </div>
                 </div>
@@ -325,7 +427,7 @@ export const ConsumerDashboardPage = () => {
                 <div>
                   <span className="text-[9px] text-slate-400 font-semibold block leading-tight">Avg Latency</span>
                   <div className="flex items-baseline gap-1">
-                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">120 ms</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">{avgLatencyMs} ms</span>
                     <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center">
                       <TrendingDown className="h-2 w-2 mr-0.5" /> 8.2%
                     </span>
@@ -335,13 +437,13 @@ export const ConsumerDashboardPage = () => {
             </div>
           </div>
 
-          {/* RECENT API ACTIVITY TABLE (Compact 3 rows) */}
+          {/* RECENT API ACTIVITY TABLE */}
           <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-3 shadow-xs shrink-0">
             <div className="flex items-center justify-between mb-1.5">
               <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100">Recent API Activity</h3>
               <button
                 onClick={() => navigate('/consumer/usage')}
-                className="text-[11px] font-semibold text-[#D44720] hover:underline inline-flex items-center gap-0.5"
+                className="text-[11px] font-semibold text-[#D44720] hover:underline inline-flex items-center gap-0.5 cursor-pointer"
               >
                 View All <ArrowRight className="h-3 w-3" />
               </button>
@@ -401,15 +503,15 @@ export const ConsumerDashboardPage = () => {
             <div className="space-y-1 text-xs">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-1 text-[11px]">
                 <span className="text-slate-500">Tier Name</span>
-                <span className="font-bold text-slate-900 dark:text-slate-100">Pro Developer</span>
+                <span className="font-bold text-slate-900 dark:text-slate-100">{assignedPlan.name}</span>
               </div>
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-1 text-[11px]">
                 <span className="text-slate-500">Rate Limit</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">1,000 req / 60s</span>
+                <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{assignedPlan.limit}</span>
               </div>
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-1 text-[11px]">
                 <span className="text-slate-500">Burst Cap</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">1,200 req</span>
+                <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{assignedPlan.burstCap}</span>
               </div>
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-1 text-[11px]">
                 <span className="text-slate-500">Gateway Status</span>
@@ -420,7 +522,7 @@ export const ConsumerDashboardPage = () => {
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-1 text-[11px]">
                 <span className="text-slate-500">Account Status</span>
                 <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {assignedPlan.status}
                 </span>
               </div>
               <div className="flex items-center justify-between text-[11px]">

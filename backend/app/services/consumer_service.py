@@ -45,6 +45,7 @@ def create_consumer(db: Session, data: ConsumerCreate) -> ApiConsumer:
 
     consumer = ApiConsumer(
         name=data.name,
+        email=data.email,
         description=data.description,
         status=consumer_status,
         plan_id=target_plan_id,
@@ -52,6 +53,14 @@ def create_consumer(db: Session, data: ConsumerCreate) -> ApiConsumer:
     db.add(consumer)
     db.commit()
     db.refresh(consumer)
+
+    if data.email:
+        try:
+            from app.services.email_service import send_consumer_welcome_email
+            send_consumer_welcome_email(data.email, consumer.name, "TempPass9824!")
+        except Exception as e:
+            print(f"Warning: Failed to dispatch SMTP welcome email: {e}")
+
     return consumer
 
 

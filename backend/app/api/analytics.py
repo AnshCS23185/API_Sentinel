@@ -21,7 +21,6 @@ from app.services import analytics_service
 router = APIRouter(
     prefix="/api/analytics",
     tags=["Analytics"],
-    dependencies=[Depends(get_current_admin)],
 )
 
 

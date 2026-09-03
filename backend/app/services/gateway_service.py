@@ -35,35 +35,53 @@ def seed_default_endpoints(db: Session) -> None:
     defaults = [
         ApiEndpoint(name="Products & E-Commerce API", path="/products", method="GET", target_url="http://demo-api:8002/api/products", is_active=True),
         ApiEndpoint(name="Products API (Full Path)", path="/api/products", method="GET", target_url="http://demo-api:8002/api/products", is_active=True),
+        ApiEndpoint(name="Products API (v1 Path)", path="/api/v1/products", method="GET", target_url="http://demo-api:8002/api/products", is_active=True),
         ApiEndpoint(name="Create Product API", path="/products", method="POST", target_url="http://demo-api:8002/api/products", is_active=True),
         ApiEndpoint(name="Create Product API (Full Path)", path="/api/products", method="POST", target_url="http://demo-api:8002/api/products", is_active=True),
         ApiEndpoint(name="Order Processing API", path="/orders", method="GET", target_url="http://demo-api:8002/api/orders", is_active=True),
         ApiEndpoint(name="Order Processing API (Full Path)", path="/api/orders", method="GET", target_url="http://demo-api:8002/api/orders", is_active=True),
+        ApiEndpoint(name="Order Processing API (v1 Path)", path="/api/v1/orders", method="GET", target_url="http://demo-api:8002/api/orders", is_active=True),
+        ApiEndpoint(name="Create Order API", path="/orders", method="POST", target_url="http://demo-api:8002/api/orders", is_active=True),
+        ApiEndpoint(name="Create Order API (Full Path)", path="/api/orders", method="POST", target_url="http://demo-api:8002/api/orders", is_active=True),
+        ApiEndpoint(name="Create Order API (v1 Path)", path="/api/v1/orders", method="POST", target_url="http://demo-api:8002/api/orders", is_active=True),
         ApiEndpoint(name="User Directory API", path="/users", method="GET", target_url="http://demo-api:8002/api/users", is_active=True),
         ApiEndpoint(name="User Directory API (Full Path)", path="/api/users", method="GET", target_url="http://demo-api:8002/api/users", is_active=True),
+        ApiEndpoint(name="User Directory API (v1 Path)", path="/api/v1/users", method="GET", target_url="http://demo-api:8002/api/users", is_active=True),
     ]
-    db.add_all(defaults)
+    for ep in defaults:
+        existing = db.scalar(
+            select(ApiEndpoint).where(
+                ApiEndpoint.path == ep.path,
+                ApiEndpoint.method == ep.method,
+            )
+        )
+        if not existing:
+            db.add(ep)
     db.commit()
 
 
 def resolve_endpoint(db: Session, method: str, path: str) -> ApiEndpoint:
     """
     Strictly resolves requested HTTP method and path against configured ApiEndpoint database records.
-    Auto-seeds default demo endpoints if table is empty.
+    Auto-seeds default demo endpoints if needed.
     Raises HTTP 404 Not Found if no active endpoint matches.
     """
     normalized_method = method.strip().upper()
     raw_path = "/" + path.lstrip("/")
 
-    # Check if table is empty
-    count = db.scalar(select(func.count(ApiEndpoint.id))) or 0
-    if count == 0:
-        seed_default_endpoints(db)
+    # Ensure demo endpoints exist
+    seed_default_endpoints(db)
 
-    # Try matching raw_path, or "/api" + raw_path if not prefixed
-    paths_to_try = [raw_path]
+    # Try matching raw_path, or variants without /v1 or with /api
+    clean_path = raw_path.replace("/v1", "")
+    paths_to_try = [
+        raw_path,
+        clean_path,
+    ]
     if not raw_path.startswith("/api/"):
         paths_to_try.append("/api" + raw_path)
+    if not clean_path.startswith("/api/"):
+        paths_to_try.append("/api" + clean_path)
 
     endpoint = db.scalar(
         select(ApiEndpoint).where(
@@ -71,6 +89,13 @@ def resolve_endpoint(db: Session, method: str, path: str) -> ApiEndpoint:
             ApiEndpoint.path.in_(paths_to_try),
         )
     )
+
+    if not endpoint:
+        endpoint = db.scalar(
+            select(ApiEndpoint).where(
+                ApiEndpoint.path.in_(paths_to_try),
+            )
+        )
 
     if not endpoint or not endpoint.is_active:
         raise HTTPException(

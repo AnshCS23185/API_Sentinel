@@ -37,7 +37,22 @@ def list_consumers(
     items, total = consumer_service.list_consumers(
         db, skip=skip, limit=limit, consumer_status=consumer_status, plan_id=plan_id
     )
-    return ConsumerListResponse(items=items, total=total, skip=skip, limit=limit)
+    formatted_items = []
+    for c in items:
+        item_dict = {
+            "id": c.id,
+            "name": c.name,
+            "email": c.email,
+            "description": c.description,
+            "status": c.status,
+            "plan_id": c.plan_id,
+            "created_at": c.created_at,
+            "updated_at": c.updated_at,
+            "plan_name": c.plan.name if c.plan else "Free Tier",
+        }
+        formatted_items.append(item_dict)
+
+    return ConsumerListResponse(items=formatted_items, total=total, skip=skip, limit=limit)
 
 
 @router.get("/{consumer_id}", response_model=ConsumerDetailResponse, summary="Get API Consumer Details")
