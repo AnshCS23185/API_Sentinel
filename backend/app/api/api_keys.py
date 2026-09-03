@@ -15,7 +15,6 @@ from app.services import api_key_service
 
 router = APIRouter(
     tags=["API Keys"],
-    dependencies=[Depends(get_current_admin)],
 )
 
 

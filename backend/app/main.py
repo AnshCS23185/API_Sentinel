@@ -10,6 +10,7 @@ from app.api.gateway import router as gateway_router
 from app.api.analytics import router as analytics_router
 from app.api.violations import router as violations_router
 from app.api.plans import router as plans_router
+from app.api.catalog import router as catalog_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -40,3 +41,4 @@ app.include_router(gateway_router)
 app.include_router(analytics_router)
 app.include_router(violations_router)
 app.include_router(plans_router)
+app.include_router(catalog_router)

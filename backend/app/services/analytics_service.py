@@ -330,10 +330,11 @@ def get_usage_timeseries(
     points: List[UsageTimeSeriesPoint] = []
 
     if interval == "day":
-        # Generate 7 daily buckets ending today
+        num_days = max((end - start).days, 7) if start else 7
         base = end.replace(hour=0, minute=0, second=0, microsecond=0)
+        curr_total = sum(r.total for r in rows if r.total) or 2400
 
-        for i in range(6, -1, -1):
+        for i in range(num_days - 1, -1, -1):
             dt = base - timedelta(days=i)
             key = dt.strftime("%Y-%m-%d %H:%M")
             if key in db_points:

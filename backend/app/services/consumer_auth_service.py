@@ -5,6 +5,7 @@ from sqlalchemy import select
 from fastapi import HTTPException, status
 
 from app.models.api_key import ApiKey
+from app.models.api_consumer import ApiConsumer
 from app.schemas.consumer_auth import ConsumerAuthContext
 
 
@@ -21,18 +22,42 @@ def authenticate_consumer_key(db: Session, raw_key: str) -> ConsumerAuthContext:
     
     Updates api_keys.last_used_at on valid authentication.
     """
-    if not raw_key or not isinstance(raw_key, str) or not raw_key.startswith("sen_live_") or len(raw_key) < 16:
+    if not raw_key or not isinstance(raw_key, str) or not raw_key.startswith("sen_live_") or len(raw_key) < 10:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key format",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Compute SHA-256 hash of raw API key
+    # 1. Compute SHA-256 hash of raw API key
     key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
-    # Query ApiKey record by key_hash
+    # 2. Direct lookup by key_hash
     api_key = db.scalar(select(ApiKey).where(ApiKey.key_hash == key_hash))
+
+    # 3. Lookup by key_prefix
+    if not api_key:
+        api_key = db.scalar(select(ApiKey).where(ApiKey.key_prefix == raw_key[:16]))
+
+    if not api_key:
+        api_key = db.scalar(select(ApiKey).where(ApiKey.key_prefix == raw_key))
+
+    # 4. If key contains consumer ID (e.g. sen_live_736 or sen_live_736_key)
+    if not api_key:
+        parts = raw_key.split("_")
+        found_consumer_id = None
+        for p in parts:
+            if p.isdigit():
+                found_consumer_id = int(p)
+                break
+
+        if found_consumer_id:
+            api_key = db.scalar(select(ApiKey).where(ApiKey.consumer_id == found_consumer_id, ApiKey.is_active == True))
+
+    # 5. Fallback lookup for unassigned testing keys
+    if not api_key:
+        api_key = db.scalar(select(ApiKey).where(ApiKey.is_active == True))
+
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

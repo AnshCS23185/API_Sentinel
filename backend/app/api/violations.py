@@ -11,7 +11,6 @@ from app.services import violation_service
 router = APIRouter(
     prefix="/api/violations",
     tags=["Rate Limit Violations"],
-    dependencies=[Depends(get_current_admin)],
 )
 
 

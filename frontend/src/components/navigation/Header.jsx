@@ -5,7 +5,7 @@ import { ThemeToggle } from '../ui/ThemeToggle'
 import { useAuth } from '@/app/providers/AuthProvider'
 
 export const Header = ({ portalType = 'admin', onToggleMobile }) => {
-  const { adminUser, logoutAdmin, logoutConsumer } = useAuth()
+  const { adminUser, consumerUser, logoutAdmin, logoutConsumer } = useAuth()
   const [profileOpen, setProfileOpen] = useState(false)
   const menuRef = useRef(null)
   const navigate = useNavigate()
@@ -34,10 +34,10 @@ export const Header = ({ portalType = 'admin', onToggleMobile }) => {
 
   const userEmail = portalType === 'admin'
     ? adminUser?.email || 'admin@sentinel.local'
-    : 'consumer@sentinel.local'
+    : consumerUser?.email || 'consumer@sentinel.local'
 
-  const userRole = portalType === 'admin' ? 'System Administrator' : 'API Consumer'
-  const initials = portalType === 'admin' ? 'AS' : 'CO'
+  const userRole = portalType === 'admin' ? 'System Administrator' : (consumerUser?.name || 'API Consumer')
+  const initials = portalType === 'admin' ? 'AS' : (consumerUser?.name ? consumerUser.name.substring(0, 2).toUpperCase() : 'CO')
 
   return (
     <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#0D1322]/95 px-4 sm:px-6 backdrop-blur-md transition-colors">

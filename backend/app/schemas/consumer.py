@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class ConsumerCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Consumer application name")
+    email: Optional[str] = Field(None, description="Consumer email address")
     description: Optional[str] = Field(None, description="Optional description of consumer")
     plan_id: Optional[int] = Field(None, description="Optional associated RateLimitPlan ID")
     status: Optional[str] = Field("active", description="Consumer status: active, inactive, suspended")
@@ -12,6 +13,7 @@ class ConsumerCreate(BaseModel):
 
 class ConsumerUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
+    email: Optional[str] = None
     description: Optional[str] = None
     plan_id: Optional[int] = None
     status: Optional[str] = None
@@ -20,6 +22,7 @@ class ConsumerUpdate(BaseModel):
 class ConsumerResponse(BaseModel):
     id: int
     name: str
+    email: Optional[str] = None
     description: Optional[str] = None
     status: str
     plan_id: Optional[int] = None
