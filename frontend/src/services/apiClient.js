@@ -9,9 +9,37 @@ export const apiClient = axios.create({
   },
 })
 
+// Shared promise to ensure concurrent requests share the exact same login exchange
+let tokenPromise = null
+
+const getPortalToken = async () => {
+  if (!tokenPromise) {
+    tokenPromise = axios
+      .post(`${API_BASE_URL}/api/auth/login`, {
+        email: 'admin@sentinel.local',
+        password: 'AdminSentinel2026!',
+      })
+      .then((res) => {
+        if (res.data?.access_token) {
+          localStorage.setItem('sentinel_admin_token', res.data.access_token)
+          return res.data.access_token
+        }
+        return null
+      })
+      .catch((err) => {
+        console.warn('Initial portal token fetch notice:', err)
+        return null
+      })
+      .finally(() => {
+        tokenPromise = null
+      })
+  }
+  return tokenPromise
+}
+
 // Attach Authorization header automatically
-apiClient.interceptors.request.use((config) => {
-  const adminToken = localStorage.getItem('sentinel_admin_token')
+apiClient.interceptors.request.use(async (config) => {
+  let adminToken = localStorage.getItem('sentinel_admin_token')
   const consumerKey = localStorage.getItem('sentinel_consumer_key')
 
   if (config.url?.startsWith('/api/gateway')) {
@@ -19,8 +47,15 @@ apiClient.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${consumerKey}`
       config.headers['X-API-Key'] = consumerKey
     }
-  } else if (adminToken) {
-    config.headers.Authorization = `Bearer ${adminToken}`
+  } else {
+    // If accessing backend data in consumer portal and token is missing, fetch it before sending request
+    const path = typeof window !== 'undefined' ? window.location.pathname : ''
+    if (!adminToken && path.startsWith('/consumer')) {
+      adminToken = await getPortalToken()
+    }
+    if (adminToken) {
+      config.headers.Authorization = `Bearer ${adminToken}`
+    }
   }
 
   return config
@@ -38,18 +73,11 @@ apiClient.interceptors.response.use(
         window.location.href = '/login/admin?expired=true'
       } else if (path.startsWith('/consumer') && !originalRequest.url?.startsWith('/api/gateway')) {
         originalRequest._retry = true
-        try {
-          const res = await axios.post(`${API_BASE_URL}/api/auth/login`, {
-            email: 'admin@sentinel.local',
-            password: 'AdminSentinel2026!',
-          })
-          if (res.data?.access_token) {
-            localStorage.setItem('sentinel_admin_token', res.data.access_token)
-            originalRequest.headers.Authorization = `Bearer ${res.data.access_token}`
-            return apiClient(originalRequest)
-          }
-        } catch (retryErr) {
-          console.warn('Silent portal token refresh failed', retryErr)
+        localStorage.removeItem('sentinel_admin_token')
+        const freshToken = await getPortalToken()
+        if (freshToken) {
+          originalRequest.headers.Authorization = `Bearer ${freshToken}`
+          return apiClient(originalRequest)
         }
       }
     }
