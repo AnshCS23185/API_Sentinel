@@ -11,18 +11,18 @@ def bootstrap_admin():
     email = settings.INITIAL_ADMIN_EMAIL or "admin@sentinel.local"
     password = settings.INITIAL_ADMIN_PASSWORD or os.getenv("INITIAL_ADMIN_PASSWORD")
 
-    if not password:
-        sys.stderr.write(
-            "Error: INITIAL_ADMIN_PASSWORD environment variable is required to bootstrap initial admin user.\n"
-        )
-        sys.exit(1)
-
     db = SessionLocal()
     try:
         existing = db.scalar(select(AdminUser).where(AdminUser.email == email.strip().lower()))
         if existing:
             print(f"Admin user already exists: {email}")
-            sys.exit(0)
+            return
+
+        if not password:
+            sys.stderr.write(
+                "Error: INITIAL_ADMIN_PASSWORD environment variable is required to bootstrap initial admin user.\n"
+            )
+            sys.exit(1)
 
         admin = AdminUser(
             email=email.strip().lower(),
@@ -42,3 +42,4 @@ def bootstrap_admin():
 
 if __name__ == "__main__":
     bootstrap_admin()
+
