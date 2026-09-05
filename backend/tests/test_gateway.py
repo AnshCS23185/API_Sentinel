@@ -224,3 +224,30 @@ def test_gateway_upstream_connection_failure_502(db_session: Session, consumer_k
         response = client.get(f"/api/gateway{test_path}", headers=headers)
         assert response.status_code == 502
         assert "unavailable" in response.json()["detail"].lower()
+
+
+def test_gateway_demo_endpoint_fallback_on_unreachable_upstream(db_session: Session, consumer_key_fixture):
+    """Verifies that demo endpoints (/products, /orders, /users) gracefully fall back to mock data when downstream service times out or is unreachable."""
+    raw_key, api_key, consumer = consumer_key_fixture
+    headers = {"Authorization": f"Bearer {raw_key}"}
+
+    # Simulate downstream connection failure when accessing demo products
+    with patch("httpx.AsyncClient.request", side_effect=httpx.TimeoutException("Connection timed out")):
+        response = client.get("/api/gateway/api/v1/products", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert "data" in data
+        assert len(data["data"]) == 3
+        assert data["data"][0]["name"] == "Laptop"
+
+    # Verify api_requests audit record was created for the fallback request
+    db_session.expire_all()
+    req_log = db_session.scalar(
+        select(ApiRequest).where(
+            ApiRequest.consumer_id == consumer.id,
+            ApiRequest.api_key_id == api_key.id,
+            ApiRequest.status_code == 200,
+        )
+    )
+    assert req_log is not None
+    assert "/products" in req_log.path
