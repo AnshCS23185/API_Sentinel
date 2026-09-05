@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Request, Response, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.core.redis import get_redis_client
 from app.schemas.consumer_auth import ConsumerAuthContext
@@ -86,13 +87,27 @@ async def gateway_proxy(
     user_agent = request.headers.get("user-agent")
 
     # 6. Forward request downstream to Demo API
-    status_code, content, response_headers, response_time_ms = await gateway_service.forward_downstream_request(
-        method=method,
-        target_url=endpoint.target_url,
-        headers=request_headers,
-        query_params=query_params,
-        body=body,
-    )
+    try:
+        status_code, content, response_headers, response_time_ms = await gateway_service.forward_downstream_request(
+            method=method,
+            target_url=endpoint.target_url,
+            headers=request_headers,
+            query_params=query_params,
+            body=body,
+        )
+    except HTTPException as exc:
+        gateway_service.log_api_request(
+            db=db,
+            auth_context=auth_context,
+            endpoint=endpoint,
+            method=method,
+            path=path,
+            status_code=exc.status_code,
+            response_time_ms=round(settings.GATEWAY_TIMEOUT_SECONDS * 1000.0, 2),
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        raise exc
 
     # 7. Record audit log entry in api_requests table
     gateway_service.log_api_request(

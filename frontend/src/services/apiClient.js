@@ -43,7 +43,7 @@ apiClient.interceptors.request.use(async (config) => {
   const consumerKey = localStorage.getItem('sentinel_consumer_key')
 
   if (config.url?.startsWith('/api/gateway')) {
-    if (consumerKey) {
+    if (!config.headers.Authorization && !config.headers['X-API-Key'] && consumerKey) {
       config.headers.Authorization = `Bearer ${consumerKey}`
       config.headers['X-API-Key'] = consumerKey
     }
