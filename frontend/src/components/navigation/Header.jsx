@@ -40,7 +40,7 @@ export const Header = ({ portalType = 'admin', onToggleMobile }) => {
   const initials = portalType === 'admin' ? 'AS' : (consumerUser?.name ? consumerUser.name.substring(0, 2).toUpperCase() : 'CO')
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#0D1322]/95 px-4 sm:px-6 backdrop-blur-md transition-colors">
+    <header className="sticky top-0 z-40 relative flex h-16 w-full items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#0D1322]/95 px-4 sm:px-6 backdrop-blur-md transition-colors">
       {/* Left: Brand Logo & Title + Mobile Menu Toggle */}
       <div className="flex items-center gap-3">
         {onToggleMobile && (
@@ -65,6 +65,14 @@ export const Header = ({ portalType = 'admin', onToggleMobile }) => {
               {portalType === 'admin' ? 'ADMIN PORTAL' : 'CONSUMER PORTAL'}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Middle: Developer Attribution Line */}
+      <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center justify-center pointer-events-none">
+        <div className="flex items-center gap-2 rounded-full border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/70 px-3.5 py-1 text-xs font-semibold text-black dark:text-white shadow-2xs whitespace-nowrap">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>API rate limiter developed by Ansh Tripathi (CS23185 - 4th yr / 7th sem)</span>
         </div>
       </div>
 

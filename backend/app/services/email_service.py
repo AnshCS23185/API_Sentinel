@@ -28,6 +28,8 @@ def send_consumer_welcome_email(recipient_email: str, consumer_name: str, initia
         msg["From"] = f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>"
         msg["To"] = recipient_email
 
+        portal_login_url = f"{settings.FRONTEND_URL.rstrip('/')}/login/consumer"
+
         plain_text = f"""Hello {consumer_name},
 
 Your API Consumer account has been successfully provisioned on API Sentinel.
@@ -37,7 +39,7 @@ Here are your initial portal login credentials:
 - Portal Login Email: {recipient_email}
 - Initial Password: {initial_password}
 
-Login Portal URL: http://localhost:5173/login/consumer
+Login Portal URL: {portal_login_url}
 
 Please sign in and update your password upon your first access.
 
@@ -89,7 +91,7 @@ API Sentinel System
             </div>
 
             <div class="btn-wrap">
-              <a href="http://localhost:5173/login/consumer" class="btn">Sign In to Consumer Portal &rarr;</a>
+              <a href="{portal_login_url}" class="btn">Sign In to Consumer Portal &rarr;</a>
             </div>
 
             <div class="footer">

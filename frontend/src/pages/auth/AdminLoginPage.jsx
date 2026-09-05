@@ -23,7 +23,11 @@ export const AdminLoginPage = () => {
       await adminLogin(email || 'admin@sentinel.local', password || 'AdminSentinel2026!')
       navigate('/admin')
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid admin credentials')
+      if (!err.response && (err.message === 'Network Error' || err.code === 'ERR_NETWORK')) {
+        setError('Cannot reach backend server. Please ensure the backend container is running.')
+      } else {
+        setError(err.response?.data?.detail || 'Invalid admin credentials')
+      }
     } finally {
       setLoading(false)
     }
@@ -46,7 +50,11 @@ export const AdminLoginPage = () => {
       await adminLogin('admin@sentinel.local', 'AdminSentinel2026!')
       navigate('/admin')
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid admin credentials')
+      if (!err.response && (err.message === 'Network Error' || err.code === 'ERR_NETWORK')) {
+        setError('Cannot reach backend server. Please ensure the backend container is running.')
+      } else {
+        setError(err.response?.data?.detail || 'Invalid admin credentials')
+      }
     } finally {
       setLoading(false)
     }

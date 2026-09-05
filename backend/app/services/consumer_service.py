@@ -30,10 +30,6 @@ def create_consumer(db: Session, data: ConsumerCreate) -> ApiConsumer:
     target_plan_id = data.plan_id
     if target_plan_id is not None:
         validate_rate_limit_plan(db, target_plan_id)
-    else:
-        default_plan = db.scalar(select(RateLimitPlan).where(RateLimitPlan.is_active == True).order_by(RateLimitPlan.id.asc()))
-        if default_plan:
-            target_plan_id = default_plan.id
 
     valid_statuses = {"active", "inactive", "suspended"}
     consumer_status = data.status or "active"

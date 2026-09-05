@@ -1,9 +1,11 @@
 from datetime import datetime
 from typing import List, Optional, Any, Dict
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.api_endpoint import ApiEndpoint
 
@@ -45,6 +47,11 @@ class CatalogApiSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+def get_demo_target() -> str:
+    parsed = urlparse(settings.DEMO_API_URL)
+    return parsed.netloc or "demo-api:8002"
+
+
 # Pre-seeded catalog items matching the system schema
 DEFAULT_CATALOG = [
     {
@@ -53,7 +60,7 @@ DEFAULT_CATALOG = [
         "description": "Product catalog and e-commerce operations.",
         "status": "active",
         "path": "/api/products",
-        "target": "demo-api:8002",
+        "target": get_demo_target(),
         "endpoints_count": 12,
         "requests_7d": "42.8K",
         "consumers_count": 18,
@@ -68,7 +75,7 @@ DEFAULT_CATALOG = [
         "description": "Handles order creation, processing and fulfillment operations.",
         "status": "active",
         "path": "/api/orders",
-        "target": "demo-api:8002",
+        "target": get_demo_target(),
         "endpoints_count": 9,
         "requests_7d": "35.6K",
         "consumers_count": 24,
@@ -83,7 +90,7 @@ DEFAULT_CATALOG = [
         "description": "User profile, authentication and directory management operations.",
         "status": "active",
         "path": "/api/users",
-        "target": "demo-api:8002",
+        "target": get_demo_target(),
         "endpoints_count": 7,
         "requests_7d": "50.0K",
         "consumers_count": 29,
@@ -122,6 +129,7 @@ def list_catalog_apis(db: Session = Depends(get_db)):
         else:
             return f"{int(diff // 86400)} days ago"
 
+    demo_target = get_demo_target()
     return [
         {
             "id": 1,
@@ -129,7 +137,7 @@ def list_catalog_apis(db: Session = Depends(get_db)):
             "description": "Product catalog and e-commerce operations.",
             "status": "active",
             "path": "/api/products",
-            "target": "demo-api:8002",
+            "target": demo_target,
             "endpoints_count": products_count,
             "requests_7d": "42.8K",
             "consumers_count": 18,
@@ -144,7 +152,7 @@ def list_catalog_apis(db: Session = Depends(get_db)):
             "description": "Handles order creation, processing and fulfillment operations.",
             "status": "active",
             "path": "/api/orders",
-            "target": "demo-api:8002",
+            "target": demo_target,
             "endpoints_count": orders_count,
             "requests_7d": "35.6K",
             "consumers_count": 24,
@@ -159,7 +167,7 @@ def list_catalog_apis(db: Session = Depends(get_db)):
             "description": "User profile, authentication and directory management operations.",
             "status": "active",
             "path": "/api/users",
-            "target": "demo-api:8002",
+            "target": demo_target,
             "endpoints_count": users_count,
             "requests_7d": "50.0K",
             "consumers_count": 29,
@@ -174,6 +182,7 @@ def list_catalog_apis(db: Session = Depends(get_db)):
 @router.get("/endpoints", response_model=List[EndpointSchema], summary="List Gateway Endpoints")
 def list_endpoints(db: Session = Depends(get_db)):
     db_endpoints = db.query(ApiEndpoint).all()
+    demo_base = settings.DEMO_API_URL.rstrip("/")
     if not db_endpoints:
         return [
             {
@@ -182,7 +191,7 @@ def list_endpoints(db: Session = Depends(get_db)):
                 "description": "Retrieve list of products",
                 "method": "GET",
                 "path": "/api/products",
-                "target_url": "http://demo-api:8002/api/products",
+                "target_url": f"{demo_base}/api/products",
                 "api_name": "Products & E-Commerce API",
                 "is_active": True,
                 "last_updated": "29/08/2026 09:12 PM",
@@ -193,7 +202,7 @@ def list_endpoints(db: Session = Depends(get_db)):
                 "description": "Retrieve list of orders",
                 "method": "GET",
                 "path": "/api/orders",
-                "target_url": "http://demo-api:8002/api/orders",
+                "target_url": f"{demo_base}/api/orders",
                 "api_name": "Order Processing API",
                 "is_active": True,
                 "last_updated": "28/08/2026 04:45 PM",
@@ -204,7 +213,7 @@ def list_endpoints(db: Session = Depends(get_db)):
                 "description": "Create a new order",
                 "method": "POST",
                 "path": "/api/orders",
-                "target_url": "http://demo-api:8002/api/orders",
+                "target_url": f"{demo_base}/api/orders",
                 "api_name": "Order Processing API",
                 "is_active": True,
                 "last_updated": "27/08/2026 11:38 AM",

@@ -42,22 +42,6 @@ def authenticate_consumer_key(db: Session, raw_key: str) -> ConsumerAuthContext:
     if not api_key:
         api_key = db.scalar(select(ApiKey).where(ApiKey.key_prefix == raw_key))
 
-    # 4. If key contains consumer ID (e.g. sen_live_736 or sen_live_736_key)
-    if not api_key:
-        parts = raw_key.split("_")
-        found_consumer_id = None
-        for p in parts:
-            if p.isdigit():
-                found_consumer_id = int(p)
-                break
-
-        if found_consumer_id:
-            api_key = db.scalar(select(ApiKey).where(ApiKey.consumer_id == found_consumer_id, ApiKey.is_active == True))
-
-    # 5. Fallback lookup for unassigned testing keys
-    if not api_key:
-        api_key = db.scalar(select(ApiKey).where(ApiKey.is_active == True))
-
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

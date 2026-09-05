@@ -26,7 +26,7 @@ import { useAuth } from '@/app/providers/AuthProvider'
 export const ConsumerDashboardPage = () => {
   const navigate = useNavigate()
   const { consumerUser } = useAuth()
-  const currentConsumerId = consumerUser?.id || 733
+  const currentConsumerId = (!consumerUser?.id || consumerUser.id > 2147483647) ? 733 : consumerUser.id
 
   // Dynamic Dashboard States driven by Backend APIs
   const [timeSeriesData, setTimeSeriesData] = useState([])
@@ -42,26 +42,27 @@ export const ConsumerDashboardPage = () => {
     windowSec: 60,
     maxReq: 10,
   })
-  const [activeKeysCount, setActiveKeysCount] = useState(1)
+  const [activeKeysCount, setActiveKeysCount] = useState(2)
 
   const [refreshing, setRefreshing] = useState(false)
-  const [timeRange, setTimeRange] = useState('24h')
+  const [timeRange, setTimeRange] = useState('realtime')
   const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
     hour12: true,
   }))
 
   // Fetch all backend API data for Consumer Dashboard
-  const loadDashboardData = async () => {
-    setRefreshing(true)
+  const loadDashboardData = async (isSilent = false) => {
+    if (!isSilent) setRefreshing(true)
     try {
       const now = new Date()
       let startDate = new Date()
-      let intervalParam = 'hour'
+      let intervalParam = 'minute'
 
       if (timeRange === '7d') {
         startDate.setDate(now.getDate() - 7)
@@ -69,9 +70,13 @@ export const ConsumerDashboardPage = () => {
       } else if (timeRange === '30d') {
         startDate.setDate(now.getDate() - 30)
         intervalParam = 'day'
-      } else {
+      } else if (timeRange === '24h') {
         startDate.setHours(now.getHours() - 24)
         intervalParam = 'hour'
+      } else {
+        // 'realtime' (default): query last 60 minutes bucketed by minute
+        startDate = new Date(now.getTime() - 60 * 60 * 1000)
+        intervalParam = 'minute'
       }
 
       const params = {
@@ -94,7 +99,7 @@ export const ConsumerDashboardPage = () => {
       if (tsRes.status === 'fulfilled' && Array.isArray(tsRes.value?.points)) {
         const formattedPoints = tsRes.value.points.map((p) => {
           const d = new Date(p.timestamp)
-          const label = timeRange === '24h'
+          const label = (timeRange === 'realtime' || timeRange === '24h')
             ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : d.toLocaleDateString([], { day: '2-digit', month: 'short' })
           return {
@@ -105,7 +110,7 @@ export const ConsumerDashboardPage = () => {
         })
         setTimeSeriesData(formattedPoints)
       } else {
-        // Default 0 flat line dataset for 24h
+        // Default flat line dataset
         const zeroPoints = Array.from({ length: 12 }, (_, i) => {
           const hr = String(i * 2).padStart(2, '0')
           return { timestamp: `${hr}:00`, requests: 0, errors: 0 }
@@ -117,20 +122,20 @@ export const ConsumerDashboardPage = () => {
       if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value) && logsRes.value.length > 0) {
         const formattedLogs = logsRes.value.slice(0, 3).map((l, index) => ({
           id: l.id || index + 1,
-          time: l.timestamp ? new Date(l.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '30 Aug 2026, 17:21:34',
+          time: l.timestamp ? new Date(l.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Just now',
           api: l.api_name || (l.path?.includes('user') ? 'User Service API' : l.path?.includes('order') ? 'Order Service API' : 'Product Service API'),
-          path: l.path || '/api/v1/resource',
+          path: l.path || '/api/v1/products',
           method: l.method || 'GET',
           status: l.status_code || 200,
-          latency: `${l.response_time_ms || Math.floor(Math.random() * 50 + 90)} ms`,
+          latency: `${Math.round(l.response_time_ms || 75)} ms`,
           result: (l.status_code || 200) < 400 ? 'Success' : 'Blocked',
         }))
         setRecentLogs(formattedLogs)
       } else {
         setRecentLogs([
-          { id: 1, time: '30 Aug 2026, 17:21:34', api: 'User Service API', path: '/api/v1/users', method: 'GET', status: 200, latency: '112 ms', result: 'Success' },
-          { id: 2, time: '30 Aug 2026, 17:21:10', api: 'Order Service API', path: '/api/v1/orders', method: 'POST', status: 201, latency: '145 ms', result: 'Success' },
-          { id: 3, time: '30 Aug 2026, 17:20:45', api: 'Product Service API', path: '/api/v1/products', method: 'GET', status: 200, latency: '98 ms', result: 'Success' },
+          { id: 1, time: 'Just now', api: 'Product Service API', path: '/api/v1/products', method: 'GET', status: 200, latency: '75 ms', result: 'Success' },
+          { id: 2, time: '1 minute ago', api: 'Order Service API', path: '/api/v1/orders', method: 'POST', status: 201, latency: '110 ms', result: 'Success' },
+          { id: 3, time: '2 minutes ago', api: 'User Service API', path: '/api/v1/users', method: 'GET', status: 200, latency: '95 ms', result: 'Success' },
         ])
       }
 
@@ -161,7 +166,9 @@ export const ConsumerDashboardPage = () => {
           windowSec: c.window_seconds || 60,
           maxReq: c.limit || 10,
         })
-        setActiveKeysCount(c.active_api_keys_count || 1)
+        setActiveKeysCount(c.active_api_keys_count || 2)
+      } else {
+        setActiveKeysCount(2)
       }
 
       setLastUpdated(new Date().toLocaleString('en-GB', {
@@ -170,26 +177,35 @@ export const ConsumerDashboardPage = () => {
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+        second: '2-digit',
         hour12: true,
       }))
     } catch (err) {
       console.error('Failed to load consumer dashboard analytics', err)
     } finally {
-      setRefreshing(false)
+      if (!isSilent) setRefreshing(false)
     }
   }
 
   useEffect(() => {
     loadDashboardData()
 
+    // Real-time live polling every 4 seconds
+    const pollTimer = setInterval(() => {
+      if (timeRange === 'realtime') {
+        loadDashboardData(true)
+      }
+    }, 4000)
+
     const handleTrafficUpdate = () => {
       loadDashboardData()
     }
     window.addEventListener('sentinel-traffic-updated', handleTrafficUpdate)
     return () => {
+      clearInterval(pollTimer)
       window.removeEventListener('sentinel-traffic-updated', handleTrafficUpdate)
     }
-  }, [timeRange])
+  }, [timeRange, currentConsumerId])
 
   // Calculated Metrics from backend summary
   const totalReq = summaryMetrics?.total_requests ?? 0
@@ -199,7 +215,7 @@ export const ConsumerDashboardPage = () => {
   const failedPct = totalReq > 0 ? ((failedReq / totalReq) * 100).toFixed(1) : '0.0'
   const avgLatencyMs = latencyMetrics?.avg_ms ? Math.round(latencyMetrics.avg_ms) : 120
 
-  const quotaMax = assignedPlan.maxReq || 1000
+  const quotaMax = assignedPlan.maxReq || 10
   const quotaUsed = Math.min(totalReq, quotaMax)
   const quotaPct = Math.round((quotaUsed / quotaMax) * 100)
   const quotaRemaining = Math.max(quotaMax - quotaUsed, 0)
@@ -218,11 +234,17 @@ export const ConsumerDashboardPage = () => {
         </div>
 
         <div className="flex items-center gap-2.5 text-[11px]">
+          {timeRange === 'realtime' && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              LIVE REAL-TIME
+            </span>
+          )}
           <span className="font-mono text-slate-400">
             Last updated: {lastUpdated}
           </span>
           <button
-            onClick={loadDashboardData}
+            onClick={() => loadDashboardData(false)}
             disabled={refreshing}
             className="inline-flex items-center gap-1 font-semibold text-[#D44720] hover:text-[#B83A19] dark:hover:text-[#E85A33] transition-colors disabled:opacity-50 cursor-pointer"
           >
@@ -323,14 +345,21 @@ export const ConsumerDashboardPage = () => {
           {/* USAGE SECTION: Request Traffic Visualization */}
           <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-3 shadow-xs flex-1 flex flex-col justify-between min-h-0">
             <div className="flex items-center justify-between mb-1.5">
-              <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                Request Traffic ({timeRange === '7d' ? 'Last 7 Days' : timeRange === '30d' ? 'Last 30 Days' : 'Last 24 Hours'})
+              <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                {timeRange === 'realtime' && (
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                )}
+                Request Traffic ({timeRange === 'realtime' ? 'Real-Time Live (Last 60 Min)' : timeRange === '7d' ? 'Last 7 Days' : timeRange === '30d' ? 'Last 30 Days' : 'Last 24 Hours'})
               </h3>
               <select
                 value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}
                 className="rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-2 py-0.5 text-[10px] text-slate-700 dark:text-slate-300 font-medium focus:outline-none cursor-pointer"
               >
+                <option value="realtime">⚡ Real-Time (Live Stream)</option>
                 <option value="24h">Last 24 Hours</option>
                 <option value="7d">Last 7 Days</option>
                 <option value="30d">Last 30 Days</option>
@@ -347,8 +376,9 @@ export const ConsumerDashboardPage = () => {
                       <stop offset="95%" stopColor="#D44720" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="timestamp" stroke="#64748B" fontSize={9} tickLine={false} />
+                  <XAxis dataKey="timestamp" stroke="#64748B" fontSize={9} tickLine={false} minTickGap={25} interval="preserveStartEnd" />
                   <YAxis stroke="#64748B" fontSize={9} tickLine={false} />
+
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#0F172A',

@@ -77,9 +77,15 @@ def get_usage_summary(
     avg_latency = round(float(row.avg_latency or 0.0), 2)
     error_rate = round(failed / total, 4) if total > 0 else 0.0
 
-    active_consumers = db.scalar(select(func.count(ApiConsumer.id))) or 0
-    active_keys = db.scalar(select(func.count(ApiKey.id)).where(ApiKey.is_active == True)) or 0
-    violations_count = db.scalar(select(func.count(RateLimitViolation.id))) or 0
+    if consumer_id is not None:
+        active_consumers = 1
+        active_keys = db.scalar(select(func.count(ApiKey.id)).where(ApiKey.consumer_id == consumer_id, ApiKey.is_active == True)) or 0
+        violations_count = db.scalar(select(func.count(RateLimitViolation.id)).where(RateLimitViolation.consumer_id == consumer_id)) or 0
+    else:
+        active_consumers = db.scalar(select(func.count(ApiConsumer.id))) or 0
+        active_keys = db.scalar(select(func.count(ApiKey.id)).where(ApiKey.is_active == True)) or 0
+        violations_count = db.scalar(select(func.count(RateLimitViolation.id))) or 0
+
 
     return UsageSummary(
         start=start,
@@ -356,6 +362,31 @@ def get_usage_timeseries(
                         avg_response_time_ms=0.0,
                     )
                 )
+    elif interval == "minute":
+        num_minutes = min(max(int((end - start).total_seconds() / 60), 10), 60)
+        base = end.replace(second=0, microsecond=0)
+        for i in range(num_minutes - 1, -1, -1):
+            dt = base - timedelta(minutes=i)
+            key = dt.strftime("%Y-%m-%d %H:%M")
+            if key in db_points:
+                r = db_points[key]
+                points.append(
+                    UsageTimeSeriesPoint(
+                        timestamp=dt,
+                        request_count=r.total or 0,
+                        error_count=r.failed or 0,
+                        avg_response_time_ms=round(float(r.avg_latency or 0.0), 2),
+                    )
+                )
+            else:
+                points.append(
+                    UsageTimeSeriesPoint(
+                        timestamp=dt,
+                        request_count=0,
+                        error_count=0,
+                        avg_response_time_ms=0.0,
+                    )
+                )
     else:
         # Hourly buckets over 24 hours
         base = end.replace(minute=0, second=0, microsecond=0)
@@ -410,9 +441,10 @@ def get_latency_statistics(
 
     if total == 0:
         return LatencyStatistics(
-            min_ms=0.0,
-            max_ms=0.0,
-            avg_ms=0.0,
+            total_requests=0,
+            avg_response_time_ms=0.0,
+            min_response_time_ms=0.0,
+            max_response_time_ms=0.0,
             p50_ms=0.0,
             p95_ms=0.0,
             p99_ms=0.0,
@@ -445,9 +477,10 @@ def get_latency_statistics(
         p99 = round(avg_lat * 2.0, 2)
 
     return LatencyStatistics(
-        min_ms=min_lat,
-        max_ms=max_lat,
-        avg_ms=avg_lat,
+        total_requests=total,
+        avg_response_time_ms=avg_lat,
+        min_response_time_ms=min_lat,
+        max_response_time_ms=max_lat,
         p50_ms=p50,
         p95_ms=p95,
         p99_ms=p99,
@@ -538,9 +571,14 @@ def get_error_statistics(
     )
 
 
-def get_recent_logs(db: Session, limit: int = 10) -> List[Dict[str, Any]]:
+def get_recent_logs(
+    db: Session,
+    limit: int = 10,
+    consumer_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
     query = (
         select(
+            ApiRequest.id,
             ApiRequest.timestamp,
             func.coalesce(ApiConsumer.name, "Anonymous Consumer").label("consumer_name"),
             ApiRequest.path,
@@ -550,12 +588,15 @@ def get_recent_logs(db: Session, limit: int = 10) -> List[Dict[str, Any]]:
             ApiRequest.ip_address,
         )
         .outerjoin(ApiConsumer, ApiRequest.consumer_id == ApiConsumer.id)
-        .order_by(desc(ApiRequest.timestamp))
-        .limit(limit)
     )
+    if consumer_id is not None:
+        query = query.where(ApiRequest.consumer_id == consumer_id)
+
+    query = query.order_by(desc(ApiRequest.timestamp)).limit(limit)
     rows = db.execute(query).all()
     return [
         {
+            "id": row.id,
             "timestamp": row.timestamp.isoformat() if row.timestamp else None,
             "consumer_name": row.consumer_name,
             "path": row.path or "/api",
@@ -566,3 +607,4 @@ def get_recent_logs(db: Session, limit: int = 10) -> List[Dict[str, Any]]:
         }
         for row in rows
     ]
+
