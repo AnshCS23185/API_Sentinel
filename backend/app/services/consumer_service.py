@@ -60,9 +60,63 @@ def create_consumer(db: Session, data: ConsumerCreate) -> ApiConsumer:
     return consumer
 
 
+def ensure_demo_consumer(db: Session) -> ApiConsumer:
+    """Auto-provisions demo consumer 733 (Tesla Logistics Inc) with default API key if not found."""
+    import hashlib
+
+    # 1. Ensure Free Tier plan exists
+    free_plan = db.scalar(select(RateLimitPlan).where(RateLimitPlan.name == "Free Tier"))
+    if not free_plan:
+        free_plan = RateLimitPlan(
+            name="Free Tier",
+            description="For testing and small personal projects",
+            requests_per_window=100,
+            window_seconds=60,
+            is_active=True,
+        )
+        db.add(free_plan)
+        db.commit()
+        db.refresh(free_plan)
+
+    # 2. Check if consumer 733 exists
+    consumer = db.scalar(select(ApiConsumer).where(ApiConsumer.id == 733))
+    if not consumer:
+        consumer = ApiConsumer(
+            id=733,
+            name="Tesla Logistics Inc",
+            email="consumer@acmecorp.com",
+            description="Tesla Autonomous Logistics & Fleet Operations",
+            status="active",
+            plan_id=free_plan.id,
+        )
+        db.add(consumer)
+        db.commit()
+        db.refresh(consumer)
+
+    # 3. Ensure demo API key exists
+    raw_key = "sen_live_xkrGIpR"
+    key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+    existing_key = db.scalar(select(ApiKey).where(ApiKey.key_hash == key_hash))
+    if not existing_key:
+        api_key = ApiKey(
+            consumer_id=consumer.id,
+            name="Tesla Fleet Live Key",
+            key_prefix=raw_key[:16],
+            key_hash=key_hash,
+            is_active=True,
+        )
+        db.add(api_key)
+        db.commit()
+
+    return consumer
+
+
 def get_consumer(db: Session, consumer_id: int) -> ApiConsumer:
     """Retrieves an API Consumer by ID or raises 404."""
     consumer = db.scalar(select(ApiConsumer).where(ApiConsumer.id == consumer_id))
+    if not consumer and consumer_id == 733:
+        consumer = ensure_demo_consumer(db)
+
     if not consumer:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

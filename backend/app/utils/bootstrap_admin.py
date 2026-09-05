@@ -13,6 +13,16 @@ def bootstrap_admin():
 
     db = SessionLocal()
     try:
+        # 1. Ensure standard rate limit plans and demo consumer exist
+        try:
+            from app.services.plan_service import seed_default_plans
+            from app.services.consumer_service import ensure_demo_consumer
+            seed_default_plans(db)
+            ensure_demo_consumer(db)
+        except Exception as seed_err:
+            print(f"Notice: Demo data seed check: {seed_err}")
+
+        # 2. Check and bootstrap admin user
         existing = db.scalar(select(AdminUser).where(AdminUser.email == email.strip().lower()))
         if existing:
             print(f"Admin user already exists: {email}")
