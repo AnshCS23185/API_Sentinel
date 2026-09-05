@@ -9,19 +9,23 @@ from app.schemas.plan import PlanCreate, PlanUpdate
 
 
 def seed_default_plans(db: Session) -> List[RateLimitPlan]:
-    """Seed initial standard rate limit plans if table is empty."""
-    default_plans = [
-        RateLimitPlan(name="Free Tier", description="For testing and small personal projects", requests_per_window=100, window_seconds=60, is_active=True),
-        RateLimitPlan(name="Basic Plan", description="For hobby and development use", requests_per_window=500, window_seconds=60, is_active=True),
-        RateLimitPlan(name="Pro Plan", description="For professional applications", requests_per_window=1000, window_seconds=60, is_active=True),
-        RateLimitPlan(name="Business Plan", description="For growing businesses", requests_per_window=5000, window_seconds=60, is_active=True),
-        RateLimitPlan(name="Enterprise Plan", description="For enterprise-grade applications", requests_per_window=10000, window_seconds=60, is_active=True),
+    """Seed initial standard rate limit plans if not already present."""
+    default_plans_data = [
+        {"name": "Free Tier", "description": "For testing and small personal projects", "requests_per_window": 100, "window_seconds": 60, "is_active": True},
+        {"name": "Basic Plan", "description": "For hobby and development use", "requests_per_window": 500, "window_seconds": 60, "is_active": True},
+        {"name": "Pro Plan", "description": "For professional applications", "requests_per_window": 1000, "window_seconds": 60, "is_active": True},
+        {"name": "Business Plan", "description": "For growing businesses", "requests_per_window": 5000, "window_seconds": 60, "is_active": True},
+        {"name": "Enterprise Plan", "description": "For enterprise-grade applications", "requests_per_window": 10000, "window_seconds": 60, "is_active": True},
     ]
-    db.add_all(default_plans)
-    db.commit()
-    for p in default_plans:
-        db.refresh(p)
-    return default_plans
+    added = False
+    for data in default_plans_data:
+        existing = db.scalar(select(RateLimitPlan).where(RateLimitPlan.name == data["name"]))
+        if not existing:
+            db.add(RateLimitPlan(**data))
+            added = True
+    if added:
+        db.commit()
+    return db.scalars(select(RateLimitPlan).order_by(RateLimitPlan.id.asc())).all()
 
 
 def list_plans(db: Session) -> List[dict]:
