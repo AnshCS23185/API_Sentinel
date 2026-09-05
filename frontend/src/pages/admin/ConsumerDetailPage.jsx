@@ -29,6 +29,7 @@ export const ConsumerDetailPage = () => {
   const [submitting, setSubmitting] = useState(false)
   const [modalError, setModalError] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [copiedPrefixId, setCopiedPrefixId] = useState(null)
 
   const fetchConsumerDetail = async () => {
     setLoading(true)
@@ -84,6 +85,13 @@ export const ConsumerDetailPage = () => {
     navigator.clipboard.writeText(rawKey)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleCopyPrefix = (prefix, keyId) => {
+    if (!prefix) return
+    navigator.clipboard.writeText(prefix)
+    setCopiedPrefixId(keyId)
+    setTimeout(() => setCopiedPrefixId(null), 2000)
   }
 
   if (loading) return <LoadingState message="Fetching Consumer Profile & Provisioned Keys..." />
@@ -149,7 +157,31 @@ export const ConsumerDetailPage = () => {
             <TableRow key={k.id}>
               <TableCell className="font-mono text-xs">#{k.id}</TableCell>
               <TableCell className="font-semibold text-slate-900 dark:text-slate-100">{k.name}</TableCell>
-              <TableCell className="font-mono text-xs text-[#EBA762]">{k.key_prefix}...</TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <code className="font-mono text-xs text-amber-600 dark:text-[#EBA762] font-semibold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 select-all">
+                    {k.key_prefix}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyPrefix(k.key_prefix, k.id)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-xs cursor-pointer border border-slate-200 dark:border-slate-700 shrink-0"
+                    title="Copy Key Prefix"
+                  >
+                    {copiedPrefixId === k.id ? (
+                      <>
+                        <Check className="h-3 w-3 text-emerald-500" />
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3 w-3 text-slate-500 dark:text-slate-400" />
+                        <span className="text-[10px] font-medium">Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </TableCell>
               <TableCell>
                 <Badge variant={k.is_active ? 'success' : 'danger'}>
                   {k.is_active ? 'Active' : 'Revoked'}

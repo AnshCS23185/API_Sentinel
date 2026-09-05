@@ -32,21 +32,22 @@ DISALLOWED_FORWARD_HEADERS = {
 
 def seed_default_endpoints(db: Session) -> None:
     """Auto-seed default demo endpoints if table is empty."""
+    demo_base = settings.DEMO_API_URL.rstrip("/")
     defaults = [
-        ApiEndpoint(name="Products & E-Commerce API", path="/products", method="GET", target_url="http://demo-api:8002/api/products", is_active=True),
-        ApiEndpoint(name="Products API (Full Path)", path="/api/products", method="GET", target_url="http://demo-api:8002/api/products", is_active=True),
-        ApiEndpoint(name="Products API (v1 Path)", path="/api/v1/products", method="GET", target_url="http://demo-api:8002/api/products", is_active=True),
-        ApiEndpoint(name="Create Product API", path="/products", method="POST", target_url="http://demo-api:8002/api/products", is_active=True),
-        ApiEndpoint(name="Create Product API (Full Path)", path="/api/products", method="POST", target_url="http://demo-api:8002/api/products", is_active=True),
-        ApiEndpoint(name="Order Processing API", path="/orders", method="GET", target_url="http://demo-api:8002/api/orders", is_active=True),
-        ApiEndpoint(name="Order Processing API (Full Path)", path="/api/orders", method="GET", target_url="http://demo-api:8002/api/orders", is_active=True),
-        ApiEndpoint(name="Order Processing API (v1 Path)", path="/api/v1/orders", method="GET", target_url="http://demo-api:8002/api/orders", is_active=True),
-        ApiEndpoint(name="Create Order API", path="/orders", method="POST", target_url="http://demo-api:8002/api/orders", is_active=True),
-        ApiEndpoint(name="Create Order API (Full Path)", path="/api/orders", method="POST", target_url="http://demo-api:8002/api/orders", is_active=True),
-        ApiEndpoint(name="Create Order API (v1 Path)", path="/api/v1/orders", method="POST", target_url="http://demo-api:8002/api/orders", is_active=True),
-        ApiEndpoint(name="User Directory API", path="/users", method="GET", target_url="http://demo-api:8002/api/users", is_active=True),
-        ApiEndpoint(name="User Directory API (Full Path)", path="/api/users", method="GET", target_url="http://demo-api:8002/api/users", is_active=True),
-        ApiEndpoint(name="User Directory API (v1 Path)", path="/api/v1/users", method="GET", target_url="http://demo-api:8002/api/users", is_active=True),
+        ApiEndpoint(name="Products & E-Commerce API", path="/products", method="GET", target_url=f"{demo_base}/api/products", is_active=True),
+        ApiEndpoint(name="Products API (Full Path)", path="/api/products", method="GET", target_url=f"{demo_base}/api/products", is_active=True),
+        ApiEndpoint(name="Products API (v1 Path)", path="/api/v1/products", method="GET", target_url=f"{demo_base}/api/products", is_active=True),
+        ApiEndpoint(name="Create Product API", path="/products", method="POST", target_url=f"{demo_base}/api/products", is_active=True),
+        ApiEndpoint(name="Create Product API (Full Path)", path="/api/products", method="POST", target_url=f"{demo_base}/api/products", is_active=True),
+        ApiEndpoint(name="Order Processing API", path="/orders", method="GET", target_url=f"{demo_base}/api/orders", is_active=True),
+        ApiEndpoint(name="Order Processing API (Full Path)", path="/api/orders", method="GET", target_url=f"{demo_base}/api/orders", is_active=True),
+        ApiEndpoint(name="Order Processing API (v1 Path)", path="/api/v1/orders", method="GET", target_url=f"{demo_base}/api/orders", is_active=True),
+        ApiEndpoint(name="Create Order API", path="/orders", method="POST", target_url=f"{demo_base}/api/orders", is_active=True),
+        ApiEndpoint(name="Create Order API (Full Path)", path="/api/orders", method="POST", target_url=f"{demo_base}/api/orders", is_active=True),
+        ApiEndpoint(name="Create Order API (v1 Path)", path="/api/v1/orders", method="POST", target_url=f"{demo_base}/api/orders", is_active=True),
+        ApiEndpoint(name="User Directory API", path="/users", method="GET", target_url=f"{demo_base}/api/users", is_active=True),
+        ApiEndpoint(name="User Directory API (Full Path)", path="/api/users", method="GET", target_url=f"{demo_base}/api/users", is_active=True),
+        ApiEndpoint(name="User Directory API (v1 Path)", path="/api/v1/users", method="GET", target_url=f"{demo_base}/api/users", is_active=True),
     ]
     for ep in defaults:
         existing = db.scalar(
@@ -90,13 +91,6 @@ def resolve_endpoint(db: Session, method: str, path: str) -> ApiEndpoint:
         )
     )
 
-    if not endpoint:
-        endpoint = db.scalar(
-            select(ApiEndpoint).where(
-                ApiEndpoint.path.in_(paths_to_try),
-            )
-        )
-
     if not endpoint or not endpoint.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -121,9 +115,13 @@ def validate_upstream_target(target_url: str) -> str:
     if parsed.username or parsed.password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Embedded URL credentials prohibited")
 
-    # Verify target URL matches trusted upstream list
+    # Verify target URL matches trusted upstream list or configured demo API URL
+    allowed_candidates = list(settings.ALLOWED_UPSTREAM_TARGETS)
+    if settings.DEMO_API_URL and settings.DEMO_API_URL not in allowed_candidates:
+        allowed_candidates.append(settings.DEMO_API_URL)
+
     is_allowed = False
-    for allowed_target in settings.ALLOWED_UPSTREAM_TARGETS:
+    for allowed_target in allowed_candidates:
         allowed_parsed = urlparse(allowed_target)
         if parsed.scheme == allowed_parsed.scheme and parsed.netloc == allowed_parsed.netloc:
             is_allowed = True

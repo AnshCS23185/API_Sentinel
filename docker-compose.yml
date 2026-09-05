@@ -66,9 +66,14 @@ services:
 
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       JWT_SECRET: ${JWT_SECRET}
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      DEMO_API_URL: ${DEMO_API_URL:-http://demo-api:8002}
+      ALLOWED_UPSTREAM_TARGETS: ${ALLOWED_UPSTREAM_TARGETS:-http://demo-api:8002}
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-notifications@apisentinel.local}
@@ -77,11 +82,16 @@ services:
       EMAILS_FROM_EMAIL: ${EMAILS_FROM_EMAIL:-noreply@apisentinel.local}
       EMAILS_FROM_NAME: ${EMAILS_FROM_NAME:-API Sentinel System}
 
+    volumes:
+      - ./backend/app:/app/app
+
     ports:
       - "${BACKEND_PORT}:8000"
 
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
     restart: unless-stopped
@@ -94,10 +104,13 @@ services:
     container_name: api-sentinel-frontend
 
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
 
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
+
+    volumes:
+      - ./frontend/src:/app/src
 
     depends_on:
       - backend

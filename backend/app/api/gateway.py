@@ -68,21 +68,6 @@ async def gateway_proxy(
             window_seconds=plan.window_seconds,
         )
 
-        # Also record blocked request audit log in api_requests table with status 429
-        client_ip = request.client.host if request.client else None
-        user_agent = request.headers.get("user-agent")
-        gateway_service.log_api_request(
-            db=db,
-            auth_context=auth_context,
-            endpoint=endpoint,
-            method=method,
-            path=path,
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            response_time_ms=0.0,
-            client_ip=client_ip,
-            user_agent=user_agent,
-        )
-
         return JSONResponse(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             content={"detail": "Rate limit exceeded"},

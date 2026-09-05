@@ -21,6 +21,7 @@ from app.services import analytics_service
 router = APIRouter(
     prefix="/api/analytics",
     tags=["Analytics"],
+    dependencies=[Depends(get_current_admin)],
 )
 
 
@@ -47,9 +48,10 @@ def get_summary(
 )
 def get_recent_logs(
     limit: int = Query(10, ge=1, le=100, description="Limit recent logs count"),
+    consumer_id: Optional[int] = Query(None, description="Filter by consumer ID"),
     db: Session = Depends(get_db),
 ):
-    return analytics_service.get_recent_logs(db, limit)
+    return analytics_service.get_recent_logs(db, limit, consumer_id=consumer_id)
 
 
 @router.get(
